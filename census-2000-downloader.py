@@ -25,6 +25,28 @@ for x in range(227, 455):
     text = text.split("\n")
     pdf_book.append(text)
 
+current_file_name = 0
+file_list_dict = {}
+for x in range(len(pdf_book)):
+    for y in range(len(pdf_book[x])):
+        print(pdf_book[x][y])
+        if "File Linking Fields" in pdf_book[x][y]:
+            if current_file_name == 0: 
+                pass
+            else: 
+                file_list_dict[current_file_name] = staging_list
+            staging_list = []
+            current_file_name = pdf_book[x][y]
+        else: 
+            split_group = pdf_book[x][y].split(" ")
+            for item in split_group: 
+                if item[0] == "P" and len(item) <= 10 and item[-1].isnumeric():
+                    staging_list.append(item)
+                elif item[0] == "H" and len(item) <= 10 and item[-1].isnumeric():
+                    staging_list.append(item)
+                else: 
+                    pass
+file_list_dict[current_file_name] = staging_list
 
 file_url = 'https://www2.census.gov/census_2000/datasets/Summary_File_1/Pennsylvania/'
 full_census_data = []
