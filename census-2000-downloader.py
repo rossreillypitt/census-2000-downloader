@@ -9,13 +9,6 @@ import json
 from collections import OrderedDict
 from PyPDF2 import PdfReader
 
-
-
-#this section does not yet handle exceptions, come back to that and make it work later
-if len(sys.argv) > 1:
-    start = int(sys.argv[1])
-    end = int(sys.argv[2])
-
 pdf_book = []
 reader = PdfReader("sf1.pdf")
 number_of_pages = len(reader.pages)
@@ -26,66 +19,75 @@ for x in range(227, 455):
     pdf_book.append(text)
 
 current_file_name = 0
-file_list_dict = {}
+file_list_dict = []
+staging_list = []
 for x in range(len(pdf_book)):
     for y in range(len(pdf_book[x])):
-        print(pdf_book[x][y])
-        if "File Linking Fields" in pdf_book[x][y]:
+        if "File Linking" in pdf_book[x][y]:
             if current_file_name == 0: 
                 pass
             else: 
-                file_list_dict[current_file_name] = staging_list
+                file_list_dict.append(staging_list)
+            #print(staging_list)
             staging_list = []
             current_file_name = pdf_book[x][y]
         else: 
-            split_group = pdf_book[x][y].split(" ")
-            for item in split_group: 
-                if item[0] == "P" and len(item) <= 10 and item[-1].isnumeric():
-                    staging_list.append(item)
-                elif item[0] == "H" and len(item) <= 10 and item[-1].isnumeric():
-                    staging_list.append(item)
-                else: 
-                    pass
-file_list_dict[current_file_name] = staging_list
+            staging_list.append(pdf_book[x][y])
+file_list_dict.append(staging_list)
 
-file_url = 'https://www2.census.gov/census_2000/datasets/Summary_File_1/Pennsylvania/'
-full_census_data = []
-length_dict = {}
-for x in range(1, 40): 
-    census_data_staging_list = []
-    file_name = f'pa000{x:02d}_uf1.zip'
-    zipped_file = requests.get(f'{file_url}{file_name}')
-    read_file = zipfile.ZipFile(BytesIO(zipped_file.content))
-    sub_name = read_file.namelist()
-    file_data = pd.read_csv(read_file.read(sub_name[0]), header=None)
-    census_data_staging_list.append(file_data)
-    full_census_data.append(census_data_staging_list)
-    length_dict[file_name[:7]] = len(census_data_staging_list[0].columns)
+header_reduction_staging_list = []
+column_header_reduction_list = []
+for item in file_list_dict:
+    for x in range(len(item)):
+        for y in range(len(item[x])):
+            if item[x][y] == "P" or item[x][y] == 'H':
+                try:
+                    if item[x][y+3].isnumeric():
+                        #print(item[x][y:y+10])
+                        header_reduction_staging_list.append(item[x][y:y+10])
+                    else:
+                        pass
+                except IndexError:
+                    pass
+    column_header_reduction_list.append(header_reduction_staging_list)
+    header_reduction_staging_list = []
+
+for x in range(len(column_header_reduction_list)):
+    for y in range(len(column_header_reduction_list[x])):
+        if " " in column_header_reduction_list[x][y]:
+            column_header_reduction_list[x][y] = column_header_reduction_list[x][y].split(" ")
+
+final_column_header_list = []
+for item in column_header_reduction_list:
+    staging_set = set()
+    for items in item:
+        if "." in items[0]:
+            pass
+        elif type(items) == list:
+            if len(items[0])>=7:
+                staging_set.add(items[0])
+        elif items[-1].isnumeric():
+            staging_set.add(items)
+    staging_set = list(sorted(staging_set))
+    final_column_header_list.append(staging_set)
 
 headers_json =  requests.get("https://api.census.gov/data/2000/dec/sf1/variables.json")
-headers_dict = json.loads(headers_json)
-sorted_headers_dict = OrderedDict(sorted(json_dict['variables'].items()))
+headers_dict = json.loads(headers_json.content)
+sorted_headers_dict = OrderedDict(sorted(headers_dict['variables'].items()))
 
-full_decennial_labels = {}
-p_labels = {}
-pct_labels = {}
-h_labels = {}
-error_list = []
-for item in sorted_headers_dict:
-    if item[0].isupper():
-        try: 
-            if item.startswith('P') and item[1].isnumeric():
-                full_decennial_labels[item] = (f"{sorted_headers_dict[item]['concept']}: {sorted_headers_dict[item]['label']}")
-                p_labels[item] = (f"{sorted_headers_dict[item]['concept']}: {sorted_headers_dict[item]['label']}")
-            elif item.startswith('PCT'):
-                full_decennial_labels[item] = (f"{sorted_headers_dict[item]['concept']}: {sorted_headers_dict[item]['label']}")
-                pct_labels[item] = (f"{sorted_headers_dict[item]['concept']}: {sorted_headers_dict[item]['label']}")
-            elif item.startswith('H'): 
-                full_decennial_labels[item] = (f"{sorted_headers_dict[item]['concept']}: {sorted_headers_dict[item]['label']}")
-                h_labels[item] = (f"{sorted_headers_dict[item]['concept']}: {sorted_headers_dict[item]['label']}")
-        except KeyError:
-            error_list.append(item)
-
+full_2 = {}
+for item in final_column_header_list:
+    for items in item:
+        full_2[items] = (f"{sorted_headers_dict[items]['concept']}: {sorted_headers_dict[items]['label']}")
+        
+final_label_list = []
+for x in range(len(final_column_header_list)):
+    label_staging_list = ['FILEID', 'STUSAB', 'CHARITER', 'CIFSN', 'LOGRECNO']
+    for y in range(len(final_column_header_list[x])):
+        print(final_column_header_list[x][y])
+        label_staging_list.append(f'{final_column_header_list[x][y]}: {full_2[final_column_header_list[x][y]]}')
+    final_label_list.append(label_staging_list)
+    
 file_url = 'https://www2.census.gov/census_2000/datasets/Summary_File_1/Pennsylvania/'
 full_census_data = []
 length_dict = {}
@@ -102,19 +104,12 @@ for x in range(1, 40):
     full_census_data.append(census_data_staging_list)
     length_list.append(len(census_data_staging_list[0].columns))
 
-z = 0
-final_label_list = []
-for x in range(2):
-    y = 5
-    label_staging_list = ['FILEID', 'STUSAB', 'CHARITER', 'CIFSN', 'LOGRECNO']
-    while y < (length_list[x]):
-        label_staging_list.append(p_list[z])
-        y += 1
-        z += 1
-    final_label_list.append(label_staging_list)
-
-
-
+file_name = f'pageo_uf1.zip'
+zipped_file = requests.get(f'{file_url}{file_name}')
+read_file = zipfile.ZipFile(BytesIO(zipped_file.content))
+read_file
+temp_arg = read_file.namelist()
+file_data = pd.read_csv(read_file.open(temp_arg[0]), sep='delimiter', engine='python', header=None)
 
 
 
